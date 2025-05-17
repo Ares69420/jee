@@ -1,0 +1,265 @@
+<div class="reporting-dashboard fade-in">
+  <div class="dashboard-header">
+    <h1>PERFORMANCE ANALYTICS</h1>
+    
+    <div class="dashboard-controls">
+      <div class="time-filter">
+        <select class="form-select" [(ngModel)]="selectedTimePeriod" (change)="loadDashboardData()">
+          <option value="week">LAST 7 DAYS</option>
+          <option value="month">LAST 30 DAYS</option>
+          <option value="quarter">LAST 90 DAYS</option>
+          <option value="year">LAST 12 MONTHS</option>
+          <option value="custom">CUSTOM RANGE</option>
+        </select>
+      </div>
+      
+      <div class="export-controls">
+        <button class="btn btn-outline-dark btn-sm" (click)="exportToPdf()">
+          EXPORT PDF
+        </button>
+        <button class="btn btn-outline-dark btn-sm ms-2" (click)="exportToExcel()">
+          EXPORT DATA
+        </button>
+        <button class="btn btn-outline-dark btn-sm ms-2" (click)="printReport()">
+          PRINT
+        </button>
+      </div>
+    </div>
+    
+    <!-- Custom date range selector (shown only when custom is selected) -->
+    <div class="custom-date-range" *ngIf="selectedTimePeriod === 'custom'">
+      <div class="row g-2">
+        <div class="col-md-6">
+          <label class="form-label">START DATE</label>
+          <input type="date" class="form-control" 
+                 [value]="formatDateForInput(dateRange.start)"
+                 (change)="updateStartDate($event)">
+        </div>
+        <div class="col-md-6">
+          <label class="form-label">END DATE</label>
+          <input type="date" class="form-control" 
+                 [value]="formatDateForInput(dateRange.end)"
+                 (change)="updateEndDate($event)">
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <!-- Loading indicator -->
+  <div class="loading-container" *ngIf="isLoading">
+    <div class="spinner-border" role="status">
+      <span class="visually-hidden">Loading...</span>
+    </div>
+    <p class="loading-text">LOADING ANALYTICS</p>
+  </div>
+  
+  <!-- Dashboard content (hidden while loading) -->
+  <div class="dashboard-content" [hidden]="isLoading">
+    <!-- KPI Cards Row -->
+    <div class="row kpi-row">
+      <div class="col-md-4">
+        <div class="kpi-card">
+          <div class="kpi-title">REVENUE</div>
+          <div class="kpi-value">{{ formatCurrency(kpiData.totalRevenue) }}</div>
+          <div class="kpi-change" [ngClass]="getRevenueChange() >= 0 ? 'positive' : 'negative'">
+            {{ getRevenueChange() >= 0 ? '+' : '' }}{{ getRevenueChange() }}%
+          </div>
+        </div>
+      </div>
+      
+      <div class="col-md-4">
+        <div class="kpi-card">
+          <div class="kpi-title">ORDERS</div>
+          <div class="kpi-value">{{ kpiData.orderCount }}</div>
+          <div class="kpi-change" [ngClass]="getOrderCountChange() >= 0 ? 'positive' : 'negative'">
+            {{ getOrderCountChange() >= 0 ? '+' : '' }}{{ getOrderCountChange() }}%
+          </div>
+        </div>
+      </div>
+      
+      <div class="col-md-4">
+        <div class="kpi-card">
+          <div class="kpi-title">AVG ORDER VALUE</div>
+          <div class="kpi-value">{{ formatCurrency(kpiData.averageOrderValue) }}</div>
+          <div class="kpi-change" [ngClass]="getAOVChange() >= 0 ? 'positive' : 'negative'">
+            {{ getAOVChange() >= 0 ? '+' : '' }}{{ getAOVChange() }}%
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <!-- Charts Section -->
+  <div class="row mb-4">
+    <!-- Sales Trend Chart -->
+    <div class="col-lg-8 mb-4">
+      <div class="card chart-card">
+        <div class="card-header bg-light">
+          <h5 class="mb-0">Revenue Over Time</h5>
+        </div>
+        <div class="card-body">          <div class="chart-container">
+            <canvas baseChart
+              [data]="salesChartData"
+              [options]="salesChartOptions"
+              type="line">
+            </canvas>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Product Distribution Pie Chart -->
+    <div class="col-lg-4 mb-4">
+      <div class="card chart-card">
+        <div class="card-header bg-light">
+          <h5 class="mb-0">Product Category Distribution</h5>
+        </div>
+        <div class="card-body">          <div class="chart-container">
+            <canvas baseChart
+              [data]="productPieChartData"
+              type="pie">
+            </canvas>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <div class="row mb-4">
+    <!-- Supplier Performance Bar Chart -->
+    <div class="col-lg-7 mb-4">
+      <div class="card chart-card">
+        <div class="card-header bg-light">
+          <h5 class="mb-0">Supplier Performance</h5>
+        </div>
+        <div class="card-body">          <div class="chart-container">
+            <canvas baseChart
+              [data]="supplierBarChartData"
+              type="bar">
+            </canvas>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Additional KPIs -->
+    <div class="col-lg-5 mb-4">
+      <div class="card chart-card">
+        <div class="card-header bg-light">
+          <h5 class="mb-0">Key Performance Metrics</h5>
+        </div>
+        <div class="card-body">
+          <div class="p-3">
+            <div class="d-flex justify-content-between mb-3">
+              <span>Top Selling Product:</span>
+              <span class="fw-bold">{{kpiData.topSellingProduct}}</span>
+            </div>
+            
+            <div class="mb-3">
+              <div class="d-flex justify-content-between mb-1">
+                <span>Return Rate:</span>
+                <span class="fw-bold">{{kpiData.returnRate}}%</span>
+              </div>
+              <div class="progress" style="height: 8px;">
+                <div class="progress-bar bg-success" role="progressbar" [style.width]="kpiData.returnRate + '%'" aria-valuemin="0" aria-valuemax="100"></div>
+              </div>
+            </div>
+            
+            <div class="mb-0">
+              <div class="d-flex justify-content-between mb-1">
+                <span>Customer Satisfaction:</span>
+                <span class="fw-bold">{{kpiData.customerSatisfaction}}%</span>
+              </div>
+              <div class="progress" style="height: 8px;">
+                <div class="progress-bar bg-primary" role="progressbar" [style.width]="kpiData.customerSatisfaction + '%'" aria-valuemin="0" aria-valuemax="100"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <!-- Data Table Section -->
+  <div class="row">
+    <div class="col-12">      <div class="card">
+        <div class="card-header bg-light d-flex justify-content-between align-items-center">
+          <h5 class="mb-0">Recent Orders</h5>
+          <div class="d-flex">
+            <div class="input-group input-group-sm" style="width: 220px;">
+              <input type="text" class="form-control" placeholder="Search orders..." aria-label="Search orders">
+              <button class="btn btn-outline-secondary" type="button">
+                <i class="fas fa-search"></i>
+              </button>
+            </div>
+            <div class="ms-2">
+              <select class="form-select form-select-sm">
+                <option value="">All Statuses</option>
+                <option value="completed">Completed</option>
+                <option value="shipped">Shipped</option>
+                <option value="processing">Processing</option>
+              </select>
+            </div>
+          </div>
+        </div>
+        <div class="table-responsive">
+          <table class="table table-striped">
+            <thead class="table-light">
+              <tr>
+                <th>Order #</th>
+                <th>Customer</th>
+                <th>Products</th>
+                <th>Date</th>
+                <th>Amount</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>ORD-2023-0587</td>
+                <td>TechCorp Inc</td>
+                <td>Dell XPS 13 x5</td>
+                <td>May 8, 2025</td>
+                <td>$6,495.00</td>
+                <td><span class="badge bg-success">Completed</span></td>
+              </tr>
+              <tr>
+                <td>ORD-2023-0586</td>
+                <td>Global Systems Ltd</td>
+                <td>PowerEdge Server x2</td>
+                <td>May 7, 2025</td>
+                <td>$7,280.00</td>
+                <td><span class="badge bg-primary">Shipped</span></td>
+              </tr>
+              <tr>
+                <td>ORD-2023-0585</td>
+                <td>StartUp Solutions</td>
+                <td>HP LaserJet Pro x3</td>
+                <td>May 5, 2025</td>
+                <td>$1,197.00</td>
+                <td><span class="badge bg-warning text-dark">Processing</span></td>
+              </tr>
+              <tr>
+                <td>ORD-2023-0584</td>
+                <td>Creative Studios</td>
+                <td>Logitech MX Keys x15</td>
+                <td>May 3, 2025</td>
+                <td>$1,485.00</td>
+                <td><span class="badge bg-success">Completed</span></td>
+              </tr>
+              <tr>
+                <td>ORD-2023-0583</td>
+                <td>EdTech Academy</td>
+                <td>HP 27" Monitor x8</td>
+                <td>May 2, 2025</td>
+                <td>$2,232.00</td>
+                <td><span class="badge bg-primary">Shipped</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
